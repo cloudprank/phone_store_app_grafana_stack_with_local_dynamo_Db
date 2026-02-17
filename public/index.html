@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OTEL Phone Store</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; background-color: #f4f4f9; padding: 20px; color: #333; }
+        .container { max-width: 700px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .phone-card { border: 1px solid #eaeaea; padding: 20px; margin-bottom: 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .btn { background-color: #000; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s;}
+        .btn:hover { background-color: #333; }
+        .btn:disabled { background-color: #ccc; cursor: not-allowed; }
+        #message { margin-top: 20px; font-weight: bold; text-align: center; height: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>📱 OpenTelemetry Store</h2>
+        <p style="color: #666; margin-bottom: 30px;">Buy a phone below. Watch your Docker console to see the OTEL traces, events, and metrics output in real-time!</p>
+        
+        <div id="phones-list">Loading inventory...</div>
+        <div id="message"></div>
+    </div>
+
+    <script>
+        async function fetchPhones() {
+            try {
+                const response = await fetch('/api/phones');
+                const phones = await response.json();
+                const list = document.getElementById('phones-list');
+                list.innerHTML = '';
+                
+                // If the backend sends an error instead of an array, show it safely
+                if (phones.error) {
+                    list.innerHTML = `<p style="color: red;">Error loading inventory: ${phones.error}</p>`;
+                    return;
+                }
+
+                phones.forEach(phone => {
+                    list.innerHTML += `
+                        <div class="phone-card">
+                            <div>
+                                <strong style="font-size: 1.1em">${phone.brand} ${phone.model}</strong><br>
+                                <span style="color: #666">Price: $${phone.price} | Stock: ${phone.stock}</span>
+                            </div>
+                            <button class="btn" onclick="buyPhone(${phone.id})" ${phone.stock === 0 ? 'disabled' : ''}>
+                                ${phone.stock === 0 ? 'Out of Stock' : 'Buy'}
+                            </button>
+                        </div>
+                    `;
+                });
+            } catch (err) {
+                document.getElementById('phones-list').innerHTML = `<p style="color: red;">Failed to connect to backend API.</p>`;
+            }
+        }
+
+        async function buyPhone(id) {
+            const msgEl = document.getElementById('message');
+            msgEl.style.color = '#0066cc';
+            msgEl.innerText = 'Processing purchase...';
+            
+            const response = await fetch(`/api/buy/${id}`, { method: 'POST' });
+            const data = await response.json();
+            
+            if (response.ok) {
+                msgEl.style.color = 'green';
+                msgEl.innerText = `✅ ${data.message}`;
+                fetchPhones(); 
+            } else {
+                msgEl.style.color = 'red';
+                msgEl.innerText = `❌ ${data.error}`;
+            }
+            setTimeout(() => { msgEl.innerText = ''; }, 3000);
+        }
+
+        fetchPhones();
+    </script>
+</body>
+</html>

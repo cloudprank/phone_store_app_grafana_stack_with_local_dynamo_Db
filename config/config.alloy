@@ -1,0 +1,69 @@
+// ==========================================
+// 1. LOGS PIPELINE (Dynamic Discovery)
+// ==========================================
+// Automatically discover all Docker containers
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// Extract the container name and use it as a Loki label
+discovery.relabel "logs" {
+  targets = discovery.docker.containers.targets
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+// Read the logs and send them to Loki
+loki.source.docker "default" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.logs.output
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// ==========================================
+// 2. TRACES PIPELINE (Upgraded to gRPC)
+// ==========================================
+otelcol.receiver.otlp "default" {
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+  output {
+    // Send to the new gRPC exporter
+    traces = [otelcol.exporter.otlp.tempo.input] 
+  }
+}
+
+// Push traces to Tempo using native gRPC (port 4317)
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+    tls {
+      insecure = true
+    }
+  }
+}
+
+// ==========================================
+// 3. METRICS PIPELINE
+// ==========================================
+prometheus.scrape "app_metrics" {
+  targets         = [{"__address__" = "phone-app:9464"}]
+  scrape_interval = "5s"
+  scrape_timeout  = "5s"
+  forward_to      = [prometheus.remote_write.local.receiver]
+}
+
+prometheus.remote_write "local" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}
